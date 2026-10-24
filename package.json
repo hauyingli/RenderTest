@@ -6,7 +6,12 @@
   "description": "Isolated Instagram public page diagnostic using the SharedMark parser",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check functions/api/preview.js"
+    "check": "node --check server.mjs && node --check worker.mjs && node --check functions/api/preview.js",
+    "deploy:cloudflare": "wrangler deploy",
+    "check:cloudflare": "wrangler deploy --dry-run --outdir .local-worker-build"
+  },
+  "devDependencies": {
+    "wrangler": "^4.102.0"
   },
   "engines": { "node": ">=22" }
 }

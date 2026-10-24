@@ -1,5 +1,37 @@
 # SharedMark Instagram Render Test
 
+## Cloudflare Workers 測試（與 Render 使用相同解析器）
+
+本 Repository 同時包含兩種獨立入口：
+- Render：`server.mjs`，使用 `npm start`。
+- Cloudflare Workers：`worker.mjs`，使用 `wrangler.jsonc` 的 `main` 設定。
+
+Cloudflare Workers Builds 的設定：
+
+| 欄位 | 值 |
+| --- | --- |
+| Repository | `hauyingli/RenderTest` |
+| Branch | `main` |
+| Root Directory | `/` |
+| Build Command | `npm install` |
+| Deploy Command | `npx wrangler deploy` |
+
+Cloudflare → Workers & Pages → 對應 Worker → Settings → Variables and Secrets：
+新增執行階段（Runtime）**Secret**：`TEST_KEY`，值為至少 20 字的隨機字串。這和 Render 的 TEST_KEY 可以不同；不可把它寫進 GitHub、`wrangler.jsonc` 或 Build Variables。
+
+目前 `wrangler.jsonc` 中的 Worker 名稱是 `rendertest-ig-compare`，這可能和你先前建立的 Hello World Worker 不同，部署後應開啟實際顯示的 `rendertest-ig-compare.*.workers.dev` 網址。如果你要取代原先的 Worker，先將 `name` 改成該 Worker 在 Cloudflare 顯示的確切名稱。
+
+本機打包檢查，不會部署：
+
+```powershell
+npm install
+npm run check
+npm run check:cloudflare
+```
+
+部署後開首頁輸入 TEST_KEY，按「開始測試」；若收到 302/access_redirect，不代表部署失敗，而是 Instagram 來源回應限制。測試只統計媒體資料，不下載圖片。
+
+
 這是**獨立測試專案**，不連接 SharedMark 正式 App、Supabase、R2、Instagram Token，也不下載任何 IG 圖片。
 
 固定測試公開貼文：`https://www.instagram.com/p/DezFdXmkkI2/`。
