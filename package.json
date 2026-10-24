@@ -6,7 +6,7 @@
   "description": "Isolated Instagram public page diagnostic using the SharedMark parser",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check worker.mjs && node --check functions/api/preview.js && node --check internal-preview.mjs && node --check internal-http.mjs && node --check functions/api/preview-photo.js && node --check functions/api/preview-image.js",
+    "check": "node --check server.mjs && node --check worker.mjs && node --check functions/api/preview.js && node --check internal-preview.mjs && node --check internal-http.mjs && node --check functions/api/preview-photo.js && node --check functions/api/preview-image.js && node --check render-health.mjs",
     "deploy:cloudflare": "wrangler deploy",
     "check:cloudflare": "wrangler deploy --dry-run --outdir .local-worker-build",
     "test": "node --test test/*.test.mjs"

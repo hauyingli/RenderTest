@@ -1,6 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "rendertest-ig-compare",
+  "name": "rendertest",
   "main": "./worker.mjs",
-  "compatibility_date": "2026-10-24"
+  "compatibility_date": "2026-10-24",
+  "vars": {
+    "RENDER_HEALTH_CHECK_ENABLED": "true"
+  },
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "keep_vars": true
 }
