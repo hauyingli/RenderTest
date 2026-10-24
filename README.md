@@ -1,19 +1,3 @@
-# 每分鐘 Render 健康檢查
-
-既有 Cloudflare Worker `rendertest` 新增每分鐘的 Cron Trigger，只 GET 固定的 `https://rendertest-gmdr.onrender.com/health`，不解析 IG、不下載照片、不帶 TEST_KEY 或 RENDER_PREVIEW_SECRET。原診斷頁與 Node API 保留。
-
-- `wrangler.jsonc` 的 `triggers.crons` 設每分鐘；`RENDER_HEALTH_CHECK_ENABLED=true` 開啟，改 false 並部署可停用。
-- 每次最多10秒，單次請求、不跟轉址、不立即重試；紀錄狀態／耗時／錯誤分類，回應最多讀1KiB。
-- 設定沿用已存在的實際 Worker 名稱 `rendertest`，不另建服務。Cloudflare 排程設定傳播最長可能15分鐘，不能把剛部署就沒事件當作失敗。
-- 這只是健康檢查／降低閒置休眠機率，不保證免費實例永遠在線。Render 仍可重啟、平台故障或因額度暫停。
-- 每天約1440次探測。Render每workspace每月750免費運行小時為共用額度，持續運行的單一服務在31天最多744小時；其他免費服務也會消耗同一額度。沒有切換付費方案或調整帳務。
-
-驗證：`npm run check`、`npm test`、`npm run check:cloudflare`。後者僅dry-run；部署透過原Git整合，或日後人工執行 `npm run deploy:cloudflare`。未授權不升級計費。
-
-官方參考：[Render免費方案](https://render.com/docs/free)、[Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)。
-
----
-
 # RenderTest：SharedMark Instagram 來源服務
 
 本專案保留原本的診斷首頁與 `/api/test`，新增 server secret 保護的 Node `/internal/preview`、`/internal/photo`。以下原測試說明中的「只測狀態、不下載圖片」只描述原 `/api/test`；新增 internal photo 會短暫取得並驗證圖片 bytes，不保存檔案。

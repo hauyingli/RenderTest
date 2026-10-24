@@ -1,4 +1,3 @@
-import {checkRenderHealth} from './render-health.mjs';
 import {resolvePreview} from './functions/api/preview.js';
 
 // A deliberately limited public-post diagnostic, not an unrestricted scraper.
@@ -29,10 +28,6 @@ async function validKey(candidate,expected){
   return difference===0;
 }
 export default {
-  async scheduled(event,env){
-    const result=await checkRenderHealth(env);
-    console.log('[RENDER HEALTH]',{scheduledTime:event.scheduledTime,...result});
-  },
   async fetch(request,env){
     const url=new URL(request.url);
     if(request.method==='GET' && url.pathname==='/health')return json({ok:true,runtime:'cloudflare-workers'});
