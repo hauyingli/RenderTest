@@ -1,6 +1,9 @@
 import http from 'node:http';
 import {timingSafeEqual} from 'node:crypto';
 import {resolvePreview} from './functions/api/preview.js';
+import {createInternalPreview} from './internal-preview.mjs';
+import {handleInternalHTTP} from './internal-http.mjs';
+const internalPreview=createInternalPreview();
 
 // Single fixed public post; this is a diagnostic, not a general-purpose scraper.
 const TARGET = 'https://www.instagram.com/p/DezFdXmkkI2/';
@@ -56,6 +59,7 @@ document.getElementById('test').addEventListener('click', async () => {
 
 async function handle(req,res) {
   const url = new URL(req.url ?? '/', 'http://localhost');
+  if(url.pathname.startsWith('/internal/'))return handleInternalHTTP(req,res,internalPreview);
   if (req.method === 'GET' && url.pathname === '/health') return reply(res,200,{ok:true});
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
@@ -102,4 +106,7 @@ const server = http.createServer((req,res)=>{handle(req,res).catch(()=>{
   if (!res.headersSent) reply(res,500,{error:'internal_error'});
   else res.end();
 });});
+server.headersTimeout=10000;
+server.requestTimeout=30000;
+server.maxHeadersCount=40;
 server.listen(port,'0.0.0.0',()=>console.log(`SharedMark Render test listening on ${port}`));
