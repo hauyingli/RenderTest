@@ -5,10 +5,15 @@ import {resolvePreviewPhoto,PreviewPhotoFailure} from './functions/api/preview-p
 const SECRET=/^[A-Za-z0-9_-]{64,256}$/;
 const ID=/^[a-f0-9]{32}$/;
 export function instagramSource(value){
+ const source=socialSource(value);
+ return source && photoSource(source)?.platform==='Instagram' ? source : null;
+}
+export function socialSource(value){
  if(typeof value!=='string'||value.length>2048||/[\s\x00-\x1f\\%]/.test(value))return null;
  let u;try{u=new URL(value);}catch{return null;}
- if(!/^https:\/\/(?:www\.)?instagram\.com\//.test(value)||u.protocol!=='https:'||u.username||u.password||u.port||u.hash)return null;
- if(!/^\/(?:(?:[a-zA-Z0-9_.]+)\/)?(?:p|reel|reels|tv)\/[A-Za-z0-9_-]{1,128}\/?$/.test(u.pathname))return null;
+ if(!/^https:\/\/(?:www\.)?(?:instagram\.com|threads\.(?:com|net))\//.test(value)||u.protocol!=='https:'||u.username||u.password||u.port||u.hash)return null;
+ const pattern=u.hostname.includes('threads.') ? /^\/(?:@[a-zA-Z0-9_.]+\/post|t)\/[A-Za-z0-9_-]{1,128}\/?$/ : /^\/(?:(?:[a-zA-Z0-9_.]+)\/)?(?:p|reel|reels|tv)\/[A-Za-z0-9_-]{1,128}\/?$/;
+ if(!pattern.test(u.pathname))return null;
  // Only plain canonical permalinks at this internal boundary. The CF caller
  // strips share tracking parameters before forwarding an already verified post.
  if(u.search||!photoSource(value))return null;
@@ -36,7 +41,7 @@ export function createInternalPreview({secret=process.env.RENDER_PREVIEW_SECRET,
  const images=new Map();
  const coordinator=createPreviewCoordinator({now,maxPending:maxConcurrent,resolver:async(value,transport,time)=>{
   const slot=Math.floor(now()/60000);if(slot!==sourceWindow){sourceWindow=slot;sourceRequests=0;}
-  if(sourceRequests++>=maxSourceRequests)return {platform:'Instagram',status:'unavailable',reason:'rate_limited',retryAfterSeconds:60,images:[],media:[]};
+  if(sourceRequests++>=maxSourceRequests)return {platform:photoSource(value)?.platform || 'Instagram',status:'unavailable',reason:'rate_limited',retryAfterSeconds:60,images:[],media:[]};
   const signal=AbortSignal.timeout(sourceTimeoutMs);
   return resolvePreview(value,(url,options)=>transport(url,{...options,signal:AbortSignal.any([options.signal,signal])}),time);
  }});
@@ -57,7 +62,7 @@ export function createInternalPreview({secret=process.env.RENDER_PREVIEW_SECRET,
   try{
    const body=await bodyJSON(request),photo=url.pathname==='/internal/photo';
    if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['url',...(photo?['id']:[])].includes(k)))return json({reason:'invalid_source'},400);
-   const source=instagramSource(body.url);
+   const source=socialSource(body.url);
    if(!source||photo&&!ID.test(body.id||''))return json({reason:'invalid_source'},400);
    if(!photo){
     const result=await coordinator(source,transport);
