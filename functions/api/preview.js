@@ -2,6 +2,25 @@
 const HOSTS = new Set(['threads.com', 'www.threads.com', 'threads.net', 'www.threads.net',
   'instagram.com', 'www.instagram.com', 'youtube.com', 'www.youtube.com', 'youtu.be']);
 const buckets = new Map();
+export const PREVIEW_SOURCE_TIMEOUT_MS = 25000;
+export function cancelPreviewBody(response) {
+  try { void response.body?.cancel().catch(()=>{}); } catch (_) { /* Already locked/closed. */ }
+}
+export function awaitPreviewSignal(work, signal) {
+  return new Promise((resolve, reject) => {
+    const fail = () => reject(signal.reason || new DOMException('Timeout', 'TimeoutError'));
+    const abort = () => { signal.removeEventListener('abort', abort); fail(); };
+    signal.addEventListener('abort', abort, {once:true});
+    Promise.resolve(work).then(value => {
+      signal.removeEventListener('abort', abort);
+      if (signal.aborted) {
+        if (value?.body?.cancel) cancelPreviewBody(value);
+        fail();
+      } else resolve(value);
+    }, error => { signal.removeEventListener('abort', abort); reject(error); });
+    if (signal.aborted) abort();
+  });
+}
 const headers = {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'private, no-store',
   'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer'};
 // Workers 不支援 redirect:error，舊相容日期亦不支援 cache:no-store。
@@ -416,9 +435,17 @@ function restrictedPage(tags) {
 function publicRecords(tags, matches) {
   const records=[],profiles=new Set(); let nodes=0, limited=false;
   for (const [,name,attrs,text] of tags) {
-    if (name?.toLowerCase()!=='script' || attributes(attrs).get('type')?.toLowerCase()!=='application/json') continue;
-    let root; try {root=JSON.parse(text);} catch (_) {continue;}
-    const stack=[{value:root,depth:0}];
+    if (name?.toLowerCase()!=='script') continue;
+    const roots=[];
+    if (attributes(attrs).get('type')?.toLowerCase()==='application/json') {
+      try { roots.push(JSON.parse(text)); } catch (_) { /* malformed metadata */ }
+    }
+    // Public embed pages wrap their JSON in a JS call. Decode only the literal
+    // contextJSON value; never evaluate scripts or execute the surrounding call.
+    for (const match of text.matchAll(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/g)) {
+      try { roots.push(JSON.parse(JSON.parse(match[1]))); } catch (_) { /* malformed embed */ }
+    }
+    const stack=roots.map(value=>({value,depth:0}));
     while (stack.length) {
       const {value,depth}=stack.pop();
       if (++nodes>60000) {limited=true;break;}
@@ -723,7 +750,7 @@ async function publicPostPreview(initial,fetcher,{post,samePost,hosts,share,pars
   }
 }
 
-export async function resolvePreview(value, fetcher = fetch, now = Date.now()) {
+export async function resolvePreview(value, fetcher = fetch, now = Date.now(), {timeoutMs=PREVIEW_SOURCE_TIMEOUT_MS}={}) {
   const u=sourceURL(value);
   const platform=u.hostname.includes('threads.') ? 'Threads' : u.hostname.includes('instagram.') ? 'Instagram' : 'YouTube';
   const fallback={platform,status:'unavailable',images:[],media:[],title:'',author:'',excerpt:'',
@@ -739,6 +766,10 @@ export async function resolvePreview(value, fetcher = fetch, now = Date.now()) {
     if (platform==='Instagram') {
       const share=/^\/share\/(?:(?:p|reel)\/)?[\w-]+\/?$/;
       if (!instagramPost(u) && !share.test(u.pathname)) return fallback;
+      if (instagramPost(u) && /\/(?:reel|reels|tv)\//i.test(u.pathname)) {
+        const data=await instagramVideoPreview(u,fetcher,timeoutMs);
+        return {...fallback,...data,status:'available',reason:'',message:''};
+      }
       const data=await publicPostPreview(u,fetcher,{post:instagramPost,samePost:sameInstagramPost,
         hosts:INSTAGRAM_HOSTS,share,parse:instagramPageData,matches:isInstagramRecord});
       return data ? {...fallback,...data,status:'available',reason:'',message:''} : fallback;
@@ -880,4 +911,28 @@ export async function onRequest({request, env = {}}) {
     const {url} = JSON.parse(body); sourceURL(url);
     return reply(await withPhotoEndpoints(await coordinatedPreview(url,fetch)));
   } catch (_) { return reply({message:'此來源暫不支援預覽，網址仍可收藏。'},400); }
+}
+
+// Reels expose progressive media in their public embed payload. Select this
+// document up front, never retry a login/challenge/429 with another identity.
+export async function instagramVideoPreview(value, fetcher = fetch, timeoutMs = PREVIEW_SOURCE_TIMEOUT_MS) {
+  const post=instagramPost(value);
+  if (!post) throw new PreviewFailure('source_unavailable');
+  post.url.search='';
+  const embed=new URL(`https://www.instagram.com/p/${post.code}/embed/captioned/`);
+  const signal=AbortSignal.timeout(timeoutMs);
+  const response=await awaitPreviewSignal(fetcher(embed.href,{...requestOptions('text/html'),signal}),signal);
+  if ([301,302,303,307,308].includes(response.status)) {
+    cancelPreviewBody(response);
+    throw new PreviewFailure('source_unavailable',undefined,
+      {sourceHttpStatus:response.status,sourceOutcome:'access_redirect'});
+  }
+  const html=await boundedHTML(response,signal);
+  if (publicPageRestricted(html,post.url,{post:instagramPost,matches:isInstagramRecord})) {
+    throw new PreviewFailure('source_unavailable',undefined,{sourceHttpStatus:200,sourceOutcome:'access_restricted'});
+  }
+  const data=instagramPageData(html,post.url);
+  if (!data) throw new PreviewFailure('source_unavailable',undefined,{sourceHttpStatus:200,sourceOutcome:'no_public_media'});
+  return {...data,canonicalUrl:post.url.href,sourceHttpStatus:200,
+    sourceOutcome:data.media?.length?'public_media':'public_metadata'};
 }
